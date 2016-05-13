@@ -1,0 +1,17 @@
+﻿import uuid
+
+class uuidSAM:
+
+    """description of class"""
+
+    def __init__(self, user):
+        self.user = user
+        self.uuid = uuid.uuid4()
+
+﻿class uuidMessage:
+    """description of class"""
+
+    def __init__(self, uuid, header, message):
+        self.header = header
+        self.message = message
+        self.uuid = uuid

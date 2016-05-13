@@ -1,0 +1,140 @@
+#!/usr/bin/env python3
+
+#code|[,data]
+	#HELO
+	#msgC|TS|from|to|TSpurge|_data
+	#restart (10Min)
+
+	#EHLO|sam
+	#msgS|to|_data
+	#register|sam|forename|surename|holdtime
+	#change|sam|holdtime
+	#delete|sam
+
+import socket
+import sys
+from thread import start_new_thread
+sys.path.append('classes')
+from uuidSAM import uuidSAM
+from uuidMessage import uuidMessage
+import time
+
+listenerPort = 5005
+promoterPort = 5006
+
+log2Write = []
+#connectionsPromoter = []
+
+messages = []
+users = []
+
+debug = 50
+
+#TBD
+def handleData(data):
+	for user in users:
+		message = uuidMessage(user.uuid, "TBD", data)
+		log(str(user.uuid) + " <+ " + data, 20)
+		messages.append(message)
+
+	return
+
+def log(logMsg, verbosity = 0):
+	if (verbosity < debug):
+		log2Write.append("[" + str(verbosity) + "]: " + logMsg)
+	sys.stdout.flush()
+
+def client_thread(connection, address):
+	while True:
+		try:
+			len = connection.recv(1024)
+			if not (isinstance( len, int )): len = 1024*1024
+			data = connection.recv(len)
+			log(address + ": '%s'" % data, 10)
+			if data:
+				handleData(data)
+			else:
+				log(address + ": connection closed _ listener", 5)
+				break
+		except socket.error, msg:
+			log(address + ": '%s'" % msg + " _ listener", 4)
+			break
+
+def client_thread_promote(user, connection, address):
+	users.append(user)
+	log("user <+ " + str(user.uuid) + user.user, 30)
+
+	while True:
+		while (len(messages) > 0):
+			log("messages: " + str(len(messages)), 60)
+			for message in messages:
+				if message.uuid == user.uuid:
+					msg = messages.pop(messages.index(message))
+					data = msg.header + msg.message
+
+					log(address + ": " + msg.header, 25);
+
+					connection.send(str(len(data)))
+					connection.send(data)
+					connection.recv(1)
+		time.sleep(2)
+
+def startSocket(_type, port):
+	# Create a TCP/IP socket
+	sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)    
+	# Bind the socket to the address given on the command line
+	server_address = ('', port)    
+	# bind socket
+	try:
+		sock.bind(server_address)
+		log("starting up on %s port %s _ " % sock.getsockname() + _type)
+	except socket.error, msg:
+		log(_type + " : Bind Failed. Error Code: {} Error: {}".format(str(msg[0]), msg[1]))
+		sys.exit()
+
+	sock.listen(1)
+	log("waiting for a connection _ " + _type)
+
+	return sock
+
+def startListener(port):
+	sock = startSocket("listener", port)
+
+	while True:
+		connection, client_address = sock.accept()
+		try:
+			log(client_address[0] + " connected on :" + str(client_address[1]))
+			start_new_thread(client_thread, (connection,client_address[0],))
+		except:
+			log("Thread couldn't be startet for " + client_address[0] + " _ listener")
+
+def startPromoter(port):
+	sock = startSocket("promoter", port)
+
+	while True:
+		connection, client_address = sock.accept()
+		try:
+			log(client_address[0] + " connected on :" + str(client_address[1]))
+			start_new_thread(client_thread_promote, (uuidSAM("TBD"),connection,client_address[0],))
+		except:
+			log("Thread couldn't be startet for " + client_address[0] + " _ promoter")
+
+def cleanupPromotionList():
+	return
+
+def cleanupChecker():
+	return
+
+def Main():
+	start_new_thread(startListener, (listenerPort,))
+	start_new_thread(startPromoter, (promoterPort,))
+
+	while True:
+		while len(log2Write) > 0:
+			print >>sys.stderr, log2Write.pop(0)
+
+		cleanupChecker()
+
+def null():
+	return
+Main()
