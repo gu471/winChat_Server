@@ -24,15 +24,17 @@ log2Write = []
 #connectionsPromoter = []
 
 messages = []
-users = []
+userIDs = []
 
 debug = 80
 
 #TBD
 def handleData(data):
-	for user in users:
-		message = uuidMessage(user.uuid, "TBD", data)
-		log(str(user.uuid) + " <+ " + data, 20)
+	global userIDs
+	
+	for userID in userIDs:
+		message = uuidMessage(userID, "TBD", data)
+		log(str(userID) + " <+ " + data, 20)
 		messages.append(message)
 
 	return
@@ -43,6 +45,10 @@ def log(logMsg, verbosity = 0):
 	sys.stdout.flush()
 
 def client_thread(user, connection, address):
+	global userIDs
+
+	userIDs.append(user.uuid)
+		
 	tcp = tcpHandler(connection)
 	
 	data = str(user.uuid)
@@ -51,7 +57,7 @@ def client_thread(user, connection, address):
 	log(tcp.write(data), 50)
 	log("uuid sent " + str(user.uuid), 50)
 	time.sleep(2)
-	
+
 	while True:
 		try:		
 			data, length = tcp.listen()
@@ -60,17 +66,21 @@ def client_thread(user, connection, address):
 				handleData(data)
 			else:
 				log(address + ": connection closed _ listener", 5)
+				userIDs.pop(userIDs.index(user.uuid))
 				break
 		except socket.error, msg:
 			log(address + ": '%s'" % msg + " _ listener", 4)
+			userIDs.pop(userIDs.index(user.uuid))
 			break
 
 def client_thread_promote(user, connection, address):
+	global userIDs
+	
 	tcp = tcpHandler(connection)
-	users.append(user)
+	#users.append(user)
 	log("user <+ " + str(user.uuid) + user.user, 30)
 
-	while True:
+	while (user.uuid in userIDs):
 		while (len(messages) > 0):
 			log("messages: " + str(len(messages)), 60)
 			for message in messages:
@@ -78,7 +88,7 @@ def client_thread_promote(user, connection, address):
 					msg = messages.pop(messages.index(message))
 					data = msg.header + msg.message
 
-					log(address + ": " + msg.header, 25);
+					log(address + " <<< " + msg.header, 25);
 
 					tcp.write(data)
 		time.sleep(2)
