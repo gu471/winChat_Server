@@ -56,7 +56,7 @@ def client_thread(user, connection, address):
 	
 	log(tcp.write(data), 50)
 	log("uuid sent " + str(user.uuid), 50)
-	time.sleep(2)
+	#time.sleep(2)
 
 	while True:
 		try:		
@@ -69,7 +69,10 @@ def client_thread(user, connection, address):
 				userIDs.pop(userIDs.index(user.uuid))
 				break
 		except socket.error, msg:
-			log(address + ": '%s'" % msg + " _ listener", 4)
+			if '[Errno 32] Broken pipe' in str(msg):
+				log(address + ": connection closed _ listener", 5)
+			else:
+				log(address + ": '%s'" % msg + " _ listener", 4)
 			userIDs.pop(userIDs.index(user.uuid))
 			break
 
@@ -91,7 +94,7 @@ def client_thread_promote(user, connection, address):
 					log(address + " <<< " + msg.header, 25);
 
 					tcp.write(data)
-		time.sleep(2)
+		#time.sleep(2)
 	log(address + ": connection closed _ promoter", 5)
 
 def startSocket(_type, port):

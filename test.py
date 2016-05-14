@@ -17,6 +17,7 @@ listenerPort = 5006
 promoterPort = 5005
 server_address = "127.0.0.1"
 
+chat2Write = []
 log2Write = []
 Xmessages = []
 
@@ -26,6 +27,7 @@ tosend = ""
 
 closing = False
 sending = False
+disconnecting = False
 
 listenerConnection = None
 promoterConnection = None
@@ -33,7 +35,7 @@ promoterConnection = None
 uuid = ""
 
 def handleData(data):
-	log(data, 20)
+	log(data, 0)
 
 	return
 
@@ -42,7 +44,8 @@ def log(logMsg, verbosity = 0):
 	
 	if (verbosity < debug):
 		log2Write.append("[" + str(verbosity) + "]: " + logMsg)
-	#sys.stdout.flush()
+	if (verbosity <= 5):
+		chat2Write.append(logMsg)
 
 def connectSocket(_type, server_address, port):
 	# Create a TCP/IP socket
@@ -50,16 +53,19 @@ def connectSocket(_type, server_address, port):
 	# Connect to server
 	try:
 		sock.connect((server_address, port))
-		log("starting up on %s port %s _ " % sock.getsockname() + _type)
+		log("starting up on %s port %s _ " % sock.getsockname() + _type, 2)
 	except socket.error, msg:
-		log(_type + " : Connect Failed. Error Code: {} Error: {}".format(str(msg[0]), msg[1]))
+		log(_type + " : Connect Failed. Error Code: {} Error: {}".format(str(msg[0]), msg[1]), 2)
 		sys.exit()
 
 	return sock
 
 def startListener(address, port):
-	log("startung listener", 50)
+	global disconnecting
+
+	log("startung listener", 120)
 	connection = connectSocket("listener", address, port)
+	
 	tcp = tcpHandler(connection)
 	
 	global listenerConnection
@@ -72,19 +78,24 @@ def startListener(address, port):
 	while True:
 		try:
 			data, length = tcp.listen()
-			
-			log(address + ": '%s'" % data, 10)
+			log(address + ": '%s'" % data, 20)
 			if data:
 				handleData(data)
 			else:
-				log(address + ": connection closed _ listener", 5)
+				log(address + ": connection closed _ listener", 2)
 				break
 		except socket.error, msg:
-			log(address + ": '%s'" % msg + " _ listener", 4)
+			if '[Errno 32] Broken pipe' in str(msg):
+				log(address + ": connection closed _ listener", 2)
+			else:
+				log(address + ": '%s'" % msg + " _ listener", 2)
 			break
-
+	
+	uuid = ""
+	disconnecting = True
 
 def startPromoter(address, port):
+	global disconnecting
 	global sending
 	global tosend
 	global uuid
@@ -96,76 +107,102 @@ def startPromoter(address, port):
 	promoterConnection = connection
 	
 	uuid, length = tcp.listen()
-	log(str(uuid) + " | " + str(length))
+	log(str(uuid) + " | " + str(length), 40)
 
-	while True:
+	while not disconnecting:
 		if sending:
-			log("want to send: " + tosend)
-			log(tcp.write(tosend), 60)
-			
-			tosend = ""
+			if tosend != "":
+				log("want to send: " + tosend, 120)
+				log(tcp.write(tosend), 120)
+				
+				tosend = ""
 			sending = False
+	
+	uuid = ""
+	connection.close()
+	log(address + ": connection closed _ promoter", 2)
+
+def write2Box(box, messageList, lastLength, maxLines):
+	empty = ""
+	for i in range(1,99):
+		empty += " "	
+		
+	logLength = len(messageList)
+	tempWrite = messageList
+	
+	if logLength > lastLength:		
+		if logLength < maxLines:
+			maxim = logLength
+		else:
+			maxim = maxLines
+					
+		i = 0
+		while i < maxim:
+			box.addstr(i+1, 1, empty)	
+			box.addstr(i+1, 1, tempWrite[logLength - i - 1])
+			i += 1
+		
+		return logLength, box
+		
+		box.refresh()
+	else:
+		return lastLength, box
 
 def printScreen():
 	global tosend
 	global screen
 	global log2Write
-	
+
 	empty = ""
-	for i in range(1,79):
+	for i in range(1,99):
 		empty += " "	
 	
-	lastLength = 0
+	logLength = 0
+	chatLength = 0
 	lastToSendLength = 0
 	
 	screen.clear()
-	box1 = curses.newwin(22, 80, 0, 0)
-	box1.box()    
-	box1.refresh()
+	chatbox = curses.newwin(22, 120, 0, 0)
+	chatbox.box()    
+	chatbox.refresh()
 		
-	box2 = curses.newwin(3, 80, 23, 0)
-	box2.box()    
-	box2.refresh()	
+	sendbox = curses.newwin(3, 120, 23, 0)
+	sendbox.box()    
+	sendbox.refresh()
+	
+	logbox = curses.newwin(35, 120, 27, 0)
+	logbox.box()    
+	logbox.refresh()
+	
+	screen.addstr(63, 1, "F5 - (re)connect")
+	screen.addstr(" | END - close")
+	screen.addstr(64, 1, "F6 - disconnect")
 				
 	while True:
-		logLength = len(log2Write)
-		tempWrite = log2Write
+		logLength, box = write2Box(logbox, log2Write, logLength, 35)
+		box.refresh()
 		
-		if logLength > lastLength:
-			#print >>sys.stderr, log2Write.pop(0)
-			#screen.erase()
-			
-			if logLength < 20:
-				maxim = logLength
-			else:
-				maxim = 20
-						
-			i = 0
-			while i < maxim:
-				box1.addstr(i+1, 1, empty)	
-				box1.addstr(i+1, 1, tempWrite[logLength - i - 1])
-				i += 1
-			
-			lastLength = logLength
-			
-			box1.refresh()
-			#screen.refresh()
+		chatLength, box = write2Box(chatbox, chat2Write, chatLength, 20)
+		box.refresh()
 		
 		lengthToSend = len(tosend)
+		
 		if lengthToSend <> lastToSendLength:
 			lastToSendLength = lengthToSend
 			
-			screen.addstr(24, 1, empty)			
-			screen.addstr(24, 1, tosend)
-			box2.refresh()
+			sendbox.addstr(1, 1, empty)			
+			sendbox.addstr(1, 1, tosend)
+			sendbox.refresh()
 		
-		#screen.refresh()
-
+		screen.refresh()
+			
 def checkKeyboard():
 	global tosend
 	global closing
 	global sending
 	global screen
+	global disconnecting
+	global listenerConnection
 	
 	key = ''
 	while not closing:
@@ -175,29 +212,45 @@ def checkKeyboard():
 		elif key == ord('\n'):
 			sending = True
 		elif key == curses.KEY_BACKSPACE:
-			tosend = tosend[:-1]		
+			tosend = tosend[:-1]
+		elif key == curses.KEY_F5:
+			connect()
+		elif key == curses.KEY_F6:
+			disconnecting = True
+			log("connection closed _ listener", 2)
 		elif key <= 256:
 			tosend += chr(key)
+
+def connect():
+	global server_address
+	global promoterPort
+	global listenerPort
+	global uuid
+	global disconnecting
+	
+	disconnecting = False
+	start_new_thread(startPromoter, (server_address, promoterPort,))
+	
+	while uuid == "":
+		time.sleep(1)
+
+	log("connect with uuid: " + str(uuid), 20)
+	log("prepare listener start", 120)
+	start_new_thread(startListener, (server_address, listenerPort,))
 
 def Main():
 	global closing
 	global tosend
 	global uuid
 	
+	global listenerConnection
+	global promoterConnection
+	
 	start_new_thread(printScreen, ())
 	start_new_thread(checkKeyboard, ())
-	
-	start_new_thread(startPromoter, (server_address, promoterPort,))
-	
-	while uuid == "":
-		pass
 
-	log(str(uuid), 50)
-	log("prepare listener start", 50)
-	start_new_thread(startListener, (server_address, listenerPort,))
-	#time.sleep(1)
-	
-	
+	connect()
+
 	while not closing:
 		pass
 	
@@ -205,9 +258,5 @@ def Main():
 	listenerConnection.close()
 	promoterConnection.close()
 	curses.endwin()
-	print tosend
-	#listeningConnection.close()
-	#promotingConnection.close()
-
 
 Main()
